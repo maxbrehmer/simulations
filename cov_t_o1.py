@@ -24,7 +24,7 @@ def Tn_find(Y):
     return np.sqrt(best_val)
 
 
-def single_simulation(n, mu_X=0, sigma_X=1, rho_X=0,
+def single_simulation(n, mu_X=0, sigma_X=1, rho_X=0.5,
                       mu_Y=0, sigma_Y=1, rho_Y=0,
                       seed=None):
     """
@@ -87,7 +87,7 @@ def simulate_covariance_across_n(n_values, m=500, seed=42):
         for _ in range(m):
             # We can pass None for a random seed each iteration.
             # The main np.random.seed(...) call outside controls reproducibility.
-            Tn_1, Tn_2 = single_simulation(n=n, seed=None)
+            Tn_1, Tn_2 = single_simulation(n=n, rho_X=rho_X, rho_Y=rho_Y, seed=None)
 
             # Standardize
             Tn_1_tilde = (Tn_1 - b_n)/a_n
@@ -118,11 +118,14 @@ def simulate_covariance_across_n(n_values, m=500, seed=42):
 
 if __name__ == "__main__":
     # Example n values
-    n_values = [3, 5, 7, 10, 20, 25, 50, 100, 150, 200, 300, 500]
+    n_values = [3, 5, 10, 15, 20, 25, 50, 100, 150, 200, 250, 350, 500]
     m = 500   # simulations per n
+    rho_X = 0.1
+    rho_Y = 0.1
+    master_seed = 42
 
     # Run the simulations
-    results = simulate_covariance_across_n(n_values, m=m, seed=1234)
+    results = simulate_covariance_across_n(n_values, m=m, seed=master_seed)
 
     # Print table-like output
     print("n\tCov(Tn1*,Tn2*)\tMean(Tn1*)\tMean(Tn2*)\tStd(Tn1*)\tStd(Tn2*)")
@@ -135,9 +138,9 @@ if __name__ == "__main__":
     covariances = [results[n]["cov"] for n in n_values]
 
     # Plot covariance vs n
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(10, 6))
     plt.plot(n_values, covariances, marker='o', linestyle='-')
-    plt.title("Estimated Covariance of (Tn^*_1, Tn^*_2) vs n")
+    plt.title(f"Estimated Covariance of (Tn^*_1, Tn^*_2) vs n (m={m}, rho_X={rho_X}, rho_Y={rho_Y})")
     plt.xlabel("n")
     plt.ylabel("Covariance")
     plt.grid(True)
