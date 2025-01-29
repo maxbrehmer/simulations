@@ -95,10 +95,10 @@ for r in range(1, n):
         f"Spi_2L={Spi_2L:.3f}, Spi_2R={Spi_2R:.3f}"
     )
 
-
-
 # --------------------------------------------------------
-def Tn_squared(Y):
+# 3) Find T_n and best r
+# --------------------------------------------------------
+def Tn_find(Y):
     """
     Given a 1D NumPy array Y,
     computes T_n^2 = max_{1 <= r < n} [ S - Spi_L - Spi_R ],
@@ -134,14 +134,30 @@ def Tn_squared(Y):
         if val > best_val:
             best_val = val
             best_r = r
+    
+    Tn = np.sqrt(best_val)
 
     # best_val is T_n^2, best_r is the split that achieves it
-    return best_val, best_r
+    return Tn, best_r
 
-# Compute T_n^2 for Ypi_1
-Tn2_1, split_1 = Tn_squared(Ypi_1)
-print(f"\nFor Ypi_1: T_n^2 = {Tn2_1:.4f}, best split r={split_1}")
+# Compute T_n for Ypi_1
+Tn_1, split_1 = Tn_find(Ypi_1)
+print(f"\nFor Ypi_1: T_n^2 = {Tn_1:.4f}, best split r={split_1}")
 
-# Compute T_n^2 for Ypi_2
-Tn2_2, split_2 = Tn_squared(Ypi_2)
-print(f"For Ypi_2: T_n^2 = {Tn2_2:.4f}, best split r={split_2}")
+# Compute T_n for Ypi_2
+Tn_2, split_2 = Tn_find(Ypi_2)
+print(f"For Ypi_2: T_n^2 = {Tn_2:.4f}, best split r={split_2}")
+
+# Standardize T_n by a_n and b_n
+Tn_1_tilde = (Tn_1 - b_n)/a_n
+Tn_2_tilde = (Tn_2 - b_n)/a_n
+
+print(f"\nStandardized T_n for Ypi_1: T_n_tilde = {Tn_1_tilde:.4f}")
+print(f"Standardized T_n for Ypi_2: T_n_tilde = {Tn_2_tilde:.4f}")
+
+# --------------------------------------------------------
+# 3) Compute covariance of T_n for Ypi_1 and Ypi_2
+# --------------------------------------------------------
+
+cov_Tn = np.cov([Tn_1_tilde, Tn_2_tilde], bias=True)
+print(f"\nCovariance of T_n for Ypi_1 and Ypi_2:\n{cov_Tn}")

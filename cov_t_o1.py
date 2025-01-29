@@ -1,86 +1,144 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
-def compute_Tn_1D(data_1d, a_n, b_n):
+def Tn_find(Y):
     """
-    Compute the test statistic T_n for 1D data (n observations).
-    The formula matches your approach:
-      1) For r in {1,...,n-1}:
-         T_r = |S_r/sqrt(n) - (r/n)*S_n/sqrt(n)| / sqrt((r/n)*(1-r/n))
-      2) T_n(raw) = max_r T_r
-      3) T_n = (T_n(raw) - b_n) / a_n
+    Computes T_n^2 = max_{1 <= r < n} [S - Spi_L - Spi_R],
+    returns T_n = sqrt(T_n^2).
     """
-    n = len(data_1d)
-    S_n = np.sum(data_1d)  # total sum
+    n = len(Y)
+    if n < 2:
+        raise ValueError("Array must have at least 2 elements.")
+    # Full sum of squares
+    S = np.sum((Y - np.mean(Y))**2)
 
-    # We will scan over r=1,...,n-1 and pick the maximum
-    T_n_raw = -np.inf
-
+    best_val = float('-inf')
     for r in range(1, n):
-        S_r = np.sum(data_1d[:r])  # partial sum up to r
-        numerator = abs((S_r / np.sqrt(n)) - (r / n) * (S_n / np.sqrt(n)))
-        denominator = np.sqrt((r / n) * (1 - r / n))
+        Y_left  = Y[:r]
+        Y_right = Y[r:]
+        Spi_L = np.sum((Y_left - np.mean(Y_left))**2)
+        Spi_R = np.sum((Y_right - np.mean(Y_right))**2)
+        val = S - Spi_L - Spi_R  # T_n^2 if it's the max
+        if val > best_val:
+            best_val = val
+    return np.sqrt(best_val)
 
-        # Avoid division by zero if n=3 is extremely small, but here it won't be zero.
-        if denominator == 0:
-            continue
 
-        T_r = numerator / denominator
-        if T_r > T_n_raw:
-            T_n_raw = T_r
+def single_simulation(n, mu_X=0, sigma_X=1, rho_X=0,
+                      mu_Y=0, sigma_Y=1, rho_Y=0,
+                      seed=None):
+    """
+    1) Generates X_1, X_2 ~ MVN(rho_X), 
+       Y_1, Y_2 ~ MVN(rho_Y).
+    2) Sorts Y_1, Y_2 by X_1, X_2.
+    3) Computes T_n(Y_1), T_n(Y_2) and returns (Tn_1, Tn_2).
+    """
+    if seed is not None:
+        np.random.seed(seed)
 
-    # Apply shift and scale
-    return (T_n_raw - b_n) / a_n
+    cov_X = [[sigma_X**2, rho_X*sigma_X*sigma_X],
+             [rho_X*sigma_X*sigma_X, sigma_X**2]]
+    X = np.random.multivariate_normal([mu_X, mu_X], cov_X, n)
+    X_1, X_2 = X[:, 0], X[:, 1]
 
-def main_simulation(num_sims=1000, n=3, mu=0, sigma=1):
-    np.random.seed(42)  # For reproducibility
-    
-    # 2D data (since you have T_n1 for dimension 1, T_n2 for dimension 2)
-    d = 2
+    cov_Y = [[sigma_Y**2, rho_Y*sigma_Y*sigma_Y],
+             [rho_Y*sigma_Y*sigma_Y, sigma_Y**2]]
+    Y = np.random.multivariate_normal([mu_Y, mu_Y], cov_Y, n)
+    Y_1, Y_2 = Y[:, 0], Y[:, 1]
 
-    # Precompute a_n, b_n based on n
-    a_n = (2 * np.log(np.log(n)))**(-0.5)
-    b_n = (1 / a_n
-           + 0.5 * a_n * np.log(np.log(np.log(n)))
-           + a_n * np.log(2 * np.pi**(-0.5)))
-    
-    print(f"n = {n}")
-    print(f"a_n = {a_n:.4f}")
-    print(f"b_n = {b_n:.4f}\n")
+    # Sort indices
+    pi_1 = np.argsort(X_1)
+    pi_2 = np.argsort(X_2)
+    # Ordered data
+    Ypi_1 = Y_1[pi_1]
+    Ypi_2 = Y_2[pi_2]
 
-    Tn1_list = []
-    Tn2_list = []
+    Tn_1 = Tn_find(Ypi_1)
+    Tn_2 = Tn_find(Ypi_2)
 
-    # Repeat the experiment many times
-    for _ in range(num_sims+1):
-        # Generate n x d data from N(mu, sigma^2)
-        X = np.random.normal(mu, sigma, (n, d))
+    return Tn_1, Tn_2
 
-        # Dimension 1 data
-        X_dim1 = X[:, 0]
-        # Dimension 2 data
-        X_dim2 = X[:, 1]
 
-        # Compute T_n1 from dimension 1
-        T_n1 = compute_Tn_1D(X_dim1, a_n, b_n)
+def simulate_covariance_across_n(n_values, m=500, seed=42):
+    """
+    For each n in n_values:
+      - Run m simulations,
+      - Compute Tn^* for Y_1 and Y_2,
+      - Estimate Cov(Tn^*_1, Tn^*_2).
+    Returns a dict with the results, keyed by n.
 
-        # Compute T_n2 from dimension 2
-        T_n2 = compute_Tn_1D(X_dim2, a_n, b_n)
+    We define Tn^* = (Tn - b_n)/a_n, with user-chosen a_n, b_n.
+    """
+    # For reproducibility: fix master seed here
+    np.random.seed(seed)
 
-        Tn1_list.append(T_n1)
-        Tn2_list.append(T_n2)
+    results = {}
+    for n in n_values:
+        # Compute a_n, b_n for this n
+        a_n = (2 * np.log(np.log(n)))**(-0.5)
+        b_n = (1 / a_n
+               + 0.5 * a_n * np.log(np.log(np.log(n)))
+               + a_n * np.log(2 * np.pi**(-0.5)))
 
-    # Convert to arrays
-    Tn1_array = np.array(Tn1_list)
-    Tn2_array = np.array(Tn2_list)
+        # Collect Tn^*(Y_1) and Tn^*(Y_2)
+        Tn_1_vals = []
+        Tn_2_vals = []
 
-    # Estimate covariance matrix
-    cov_matrix = np.cov(Tn1_array, Tn2_array)
-    print("Covariance matrix (2x2):")
-    print(cov_matrix)
+        for _ in range(m):
+            # We can pass None for a random seed each iteration.
+            # The main np.random.seed(...) call outside controls reproducibility.
+            Tn_1, Tn_2 = single_simulation(n=n, seed=None)
 
-    # Off-diagonal is the covariance
-    cov_Tn1_Tn2 = cov_matrix[0, 1]
-    print(f"\nSample Cov(T_n1, T_n2) over {num_sims} runs: {cov_Tn1_Tn2:.4f}")
+            # Standardize
+            Tn_1_tilde = (Tn_1 - b_n)/a_n
+            Tn_2_tilde = (Tn_2 - b_n)/a_n
+            Tn_1_vals.append(Tn_1_tilde)
+            Tn_2_vals.append(Tn_2_tilde)
+
+        Tn_1_vals = np.array(Tn_1_vals)
+        Tn_2_vals = np.array(Tn_2_vals)
+
+        # Covariance (single scalar). ddof=1 => sample covariance
+        cov_matrix = np.cov(Tn_1_vals, Tn_2_vals, ddof=1)
+        cov_scalar = cov_matrix[0, 1]
+
+        # Store in dict
+        mean_T1 = np.mean(Tn_1_vals)
+        mean_T2 = np.mean(Tn_2_vals)
+        results[n] = {
+            "cov": cov_scalar,
+            "mean_Tn1": mean_T1,
+            "mean_Tn2": mean_T2,
+            "std_Tn1": np.std(Tn_1_vals, ddof=1),
+            "std_Tn2": np.std(Tn_2_vals, ddof=1),
+        }
+
+    return results
+
 
 if __name__ == "__main__":
-    main_simulation(num_sims=1000, n=3, mu=0, sigma=1)
+    # Example n values
+    n_values = [3, 5, 7, 10, 20, 25, 50, 100, 150, 200, 300, 500]
+    m = 500   # simulations per n
+
+    # Run the simulations
+    results = simulate_covariance_across_n(n_values, m=m, seed=1234)
+
+    # Print table-like output
+    print("n\tCov(Tn1*,Tn2*)\tMean(Tn1*)\tMean(Tn2*)\tStd(Tn1*)\tStd(Tn2*)")
+    for n in n_values:
+        row = results[n]
+        print(f"{n}\t{row['cov']:.4f}\t\t{row['mean_Tn1']:.4f}\t\t{row['mean_Tn2']:.4f}"
+              f"\t\t{row['std_Tn1']:.4f}\t\t{row['std_Tn2']:.4f}")
+
+    # For plotting: extract covariances in order
+    covariances = [results[n]["cov"] for n in n_values]
+
+    # Plot covariance vs n
+    plt.figure(figsize=(7, 5))
+    plt.plot(n_values, covariances, marker='o', linestyle='-')
+    plt.title("Estimated Covariance of (Tn^*_1, Tn^*_2) vs n")
+    plt.xlabel("n")
+    plt.ylabel("Covariance")
+    plt.grid(True)
+    plt.show()
