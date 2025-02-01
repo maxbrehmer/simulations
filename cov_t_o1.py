@@ -43,15 +43,16 @@ def single_simulation(n, mu_X=0, sigma_X=1, rho_X=0.5,
 
     cov_Y = [[sigma_Y**2, rho_Y*sigma_Y*sigma_Y],
              [rho_Y*sigma_Y*sigma_Y, sigma_Y**2]]
-    Y = np.random.multivariate_normal([mu_Y, mu_Y], cov_Y, n)
-    Y_1, Y_2 = Y[:, 0], Y[:, 1]
+    Y = np.random.normal(mu_Y, 1, n)
+    #Y = np.random.standard_t(df=1, size=n)
+    Y_1 = Y
 
     # Sort indices
     pi_1 = np.argsort(X_1)
     pi_2 = np.argsort(X_2)
     # Ordered data
     Ypi_1 = Y_1[pi_1]
-    Ypi_2 = Y_2[pi_2]
+    Ypi_2 = Y_1[pi_2]
 
     Tn_1 = Tn_find(Ypi_1)
     Tn_2 = Tn_find(Ypi_2)
@@ -90,8 +91,8 @@ def simulate_covariance_across_n(n_values, m=500, seed=42):
             Tn_1, Tn_2 = single_simulation(n=n, rho_X=rho_X, rho_Y=rho_Y, seed=None)
 
             # Standardize
-            Tn_1_tilde = (Tn_1 - b_n)/a_n
-            Tn_2_tilde = (Tn_2 - b_n)/a_n
+            Tn_1_tilde = Tn_1#(Tn_1 - b_n)/a_n
+            Tn_2_tilde = Tn_2#(Tn_2 - b_n)/a_n
             Tn_1_vals.append(Tn_1_tilde)
             Tn_2_vals.append(Tn_2_tilde)
 
@@ -99,7 +100,8 @@ def simulate_covariance_across_n(n_values, m=500, seed=42):
         Tn_2_vals = np.array(Tn_2_vals)
 
         # Covariance (single scalar). ddof=1 => sample covariance
-        cov_matrix = np.cov(Tn_1_vals, Tn_2_vals, ddof=1)
+        #cov_matrix = np.cov(Tn_1_vals, Tn_2_vals, ddof=1)
+        cov_matrix = np.corrcoef(Tn_1_vals, Tn_2_vals, ddof=1)
         cov_scalar = cov_matrix[0, 1]
 
         # Store in dict
@@ -118,10 +120,10 @@ def simulate_covariance_across_n(n_values, m=500, seed=42):
 
 if __name__ == "__main__":
     # Example n values
-    n_values = [3, 5, 10, 15, 20, 25, 50, 100, 150, 200, 250, 350, 500]
-    m = 500   # simulations per n
-    rho_X = 0.1
-    rho_Y = 0.1
+    n_values = [3, 5, 10, 50, 100, 200, 300, 500]#, 5, 10, 15, 20, 25, 50, 100, 150, 200, 250, 350, 500]
+    m = 1000   # simulations per n
+    rho_X = 0
+    rho_Y = 0
     master_seed = 42
 
     # Run the simulations
@@ -138,7 +140,7 @@ if __name__ == "__main__":
     covariances = [results[n]["cov"] for n in n_values]
 
     # Plot covariance vs n
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(12, 8))
     plt.plot(n_values, covariances, marker='o', linestyle='-')
     plt.title(f"Estimated Covariance of (Tn^*_1, Tn^*_2) vs n (m={m}, rho_X={rho_X}, rho_Y={rho_Y})")
     plt.xlabel("n")
